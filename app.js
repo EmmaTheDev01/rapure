@@ -17,6 +17,8 @@ const allowedOrigins = [
 	process.env.PROD_CLIENT_URL || "https://rapureapp.onrender.com",
 	// added production client origin
 	"https://farmersforum.nrtlify.app",
+	// Netlify production origin (added to fix reported CORS preflight failure)
+	"https://farmersforum.netlify.app",
 ];
 app.use(
 	cors({
@@ -38,5 +40,28 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/posts", postRoutes);
+
+// Simple health check route for uptime / debugging
+app.get("/ping", (req, res) => {
+	res.setHeader("Content-Type", "application/json");
+	return res.status(200).json({ status: "ok" });
+});
+
+// Global error handler — ensures CORS headers are present even on errors
+app.use((err, req, res, next) => {
+	// Set CORS headers on error responses as a fallback
+	const origin = req.headers.origin;
+	if (origin && allowedOrigins.indexOf(origin) !== -1) {
+		res.setHeader("Access-Control-Allow-Origin", origin);
+	} else {
+		res.setHeader("Access-Control-Allow-Origin", allowedOrigins[0]);
+	}
+	res.setHeader("Access-Control-Allow-Credentials", "true");
+
+	const status = err && err.status ? err.status : 500;
+	const message = (err && err.message) || "Internal Server Error";
+	// Avoid leaking stack in production
+	return res.status(status).json({ error: message });
+});
 
 export default app;
