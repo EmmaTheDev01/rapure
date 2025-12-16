@@ -38,7 +38,7 @@ export const completeProfile = async (req, res) => {
       {
         avatar: avatarUrl,
         bio: req.body.bio,
-        profileCompleted: true,
+        profileComplete: true,
       },
       { new: true }
     );
