@@ -4,7 +4,8 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     // Email is optional to allow phone-only registration flows.
-    email: { type: String, unique: true, required: false },
+    // Make the unique index sparse so multiple users without email are allowed.
+    email: { type: String, unique: true, sparse: true, required: false },
     // Phone is optional but unique when present.
     phone: { type: String, unique: true, sparse: true },
     password: { type: String, required: true, select: false },

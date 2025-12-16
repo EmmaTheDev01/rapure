@@ -21,7 +21,13 @@ export const register = async (req, res, next) => {
     }
 
     const hashed = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email, phone, password: hashed });
+    // Only include fields that are provided to avoid setting undefined and
+    // triggering unique index conflicts for absent values.
+    const newUserData = { name, password: hashed };
+    if (email) newUserData.email = email;
+    if (phone) newUserData.phone = phone;
+
+    const user = await User.create(newUserData);
 
     return res.json({
       token: generateToken(user._id),
