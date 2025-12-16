@@ -58,6 +58,20 @@ app.use((err, req, res, next) => {
 	}
 	res.setHeader("Access-Control-Allow-Credentials", "true");
 
+	// Detect Mongo duplicate key error (E11000) and return a 409 Conflict with a readable message
+	if (err && (err.code === 11000 || (err.message && err.message.includes("E11000")))) {
+		// Parse field name from error message if possible
+		let field = "field";
+		try {
+			const m = err.message.match(/index: (\w+)_1 dup key: \{ :? ?(.*)\}/);
+			if (m && m[1]) field = m[1];
+		} catch (e) {
+			/* ignore parsing errors */
+		}
+		const message = `Duplicate value for ${field}.`; 
+		return res.status(409).json({ error: message });
+	}
+
 	const status = err && err.status ? err.status : 500;
 	const message = (err && err.message) || "Internal Server Error";
 	// Avoid leaking stack in production
