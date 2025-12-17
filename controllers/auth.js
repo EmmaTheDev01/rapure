@@ -35,14 +35,14 @@ export const register = async (req, res, next) => {
     if (email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });  // Normalize email to lowercase
       if (emailExists) {
-        return res.status(400).json({ message: "Email already exists" });
+        return res.status(409).json({ message: "Email already exists" });  // 409 Conflict for duplicate email
       }
     }
 
     if (phone) {
       const phoneExists = await User.findOne({ phone: phone.trim() });  // Normalize phone (e.g., trim spaces)
       if (phoneExists) {
-        return res.status(400).json({ message: "Phone number already exists" });
+        return res.status(409).json({ message: "Phone number already exists" });  // 409 Conflict for duplicate phone
       }
     }
 
