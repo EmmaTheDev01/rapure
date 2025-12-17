@@ -16,7 +16,7 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: "Provide email or phone to register" });
     }
 
-    // Password strength validation (you can customize this)
+    // Password strength validation
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must be at least 6 characters long" });
     }
@@ -26,12 +26,12 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid email format" });
     }
 
-    // Phone validation (simple check, can be expanded for international formats)
+    // Phone validation
     if (phone && !validator.isMobilePhone(phone)) {
       return res.status(400).json({ message: "Invalid phone number format" });
     }
 
-    // Check if email or phone already exists, but only if provided
+    // Check if email exists
     if (email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });  // Normalize email to lowercase
       if (emailExists) {
@@ -39,6 +39,7 @@ export const register = async (req, res, next) => {
       }
     }
 
+    // Check if phone exists
     if (phone) {
       const phoneExists = await User.findOne({ phone: phone.trim() });  // Normalize phone (e.g., trim spaces)
       if (phoneExists) {
@@ -66,6 +67,7 @@ export const register = async (req, res, next) => {
     return next(error);
   }
 };
+
 
 
 
