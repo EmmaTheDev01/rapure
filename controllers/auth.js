@@ -49,11 +49,6 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: "Please provide either email or phone, not both" });
     }
 
-    // Password strength validation
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters long" });
-    }
-
     // Email validation if email is provided
     if (email && !validator.isEmail(email)) {
       return res.status(400).json({ message: "Invalid email format" });
@@ -67,8 +62,6 @@ export const register = async (req, res, next) => {
         return res.status(400).json({ message: "Invalid phone number format" });
       }
     }
-
-    // **Separate Conflict Checking for Email and Phone**
 
     // Only check for email conflict if email is provided (not if phone is used)
     if (email) {
@@ -107,25 +100,15 @@ export const register = async (req, res, next) => {
 
     // Handle Mongo duplicate key error (E11000) for email/phone
     if (error && (error.code === 11000 || (error.message && error.message.includes('E11000')))) {
-      let field = null;
-      try {
-        if (error.keyValue) {
-          field = Object.keys(error.keyValue)[0];  // Get the field causing the duplicate
-        } else {
-          const m = error.message.match(/index: (\w+)_1/);
-          if (m && m[1]) field = m[1];
-        }
-      } catch (e) {
-        /* ignore */
-      }
-
-      const friendly = field ? `${field} already exists` : 'Duplicate value';
-      return res.status(409).json({ message: friendly });
+      const field = error.keyValue ? Object.keys(error.keyValue)[0] : null;
+      const friendlyMessage = field ? `${field} already exists` : 'Duplicate value';
+      return res.status(409).json({ message: friendlyMessage });
     }
 
     return next(error);
   }
 };
+
 
 
 
