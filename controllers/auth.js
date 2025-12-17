@@ -68,7 +68,7 @@ export const register = async (req, res, next) => {
       }
     }
 
-    // Check if email exists if email is provided
+    // Only check for email conflict if email is provided (not if phone is used)
     if (email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });
       if (emailExists) {
@@ -76,7 +76,7 @@ export const register = async (req, res, next) => {
       }
     }
 
-    // Check if phone exists (use normalized form)
+    // Only check for phone conflict if phone is provided (not if email is used)
     if (normalizedPhone) {
       const phoneExists = await User.findOne({ phone: normalizedPhone });
       if (phoneExists) {
@@ -87,7 +87,7 @@ export const register = async (req, res, next) => {
     // Hash password before saving
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create the new user object, conditionally setting email if provided
+    // Create the new user object, conditionally setting email and/or phone
     const newUserData = { name, password: hashedPassword };
     if (email) newUserData.email = email.toLowerCase();  // Only set email if provided
     if (normalizedPhone) newUserData.phone = normalizedPhone;  // Use normalized phone number
