@@ -4,43 +4,38 @@ import { generateToken } from "../utils/jwt.js";
 import validator from 'validator';
 
 // Normalize phone numbers to a consistent storage/search format.
-// Strategy (Rwanda-focused, but safe for similar formats):
-// - Remove all non-digit characters
-// - If number starts with '0' and has 10 digits (e.g. 0781234567), replace leading 0 with '250'
-// - If number has 9 digits and starts with '7' (e.g. 781234567), prefix with '250'
-// - If number already starts with '250', keep as-is
-// - Return null for obviously invalid numbers (too short/long)
 const normalizePhone = (raw) => {
   if (!raw) return null;
-  const digits = raw.replace(/\D/g, '');
+  const digits = raw.replace(/\D/g, ''); // Remove non-digit characters
   if (!digits) return null;
 
-  // Already in international w/o + (e.g. 250781234567)
+  // If it starts with '250' and has 12 digits, keep as-is
   if (digits.startsWith('250') && digits.length === 12) return digits;
 
-  // Leading +250 (remove +)
+  // If the phone starts with '+250', remove '+'
   if (raw.trim().startsWith('+') && digits.startsWith('250') && digits.length === 12) return digits;
 
-  // Local formats
+  // Local formats: convert '0781234567' to '250781234567'
   if (digits.length === 10 && digits.startsWith('0')) {
     return '250' + digits.slice(1);
   }
 
+  // Convert '781234567' to '250781234567' (for numbers starting with '7')
   if (digits.length === 9 && digits.startsWith('7')) {
     return '250' + digits;
   }
 
-  // Fallback: if it's a plausible international number (11-15 digits), return digits
+  // Return the raw number if it’s a plausible international number (8-15 digits)
   if (digits.length >= 8 && digits.length <= 15) return digits;
 
-  return null;
+  return null; // Return null if it's an invalid number format
 };
 
 export const register = async (req, res, next) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // Basic validation: require name and password, and at least one identifier
+    // Basic validation: require name and password, and at least one identifier (email or phone)
     if (!name || !password) {
       return res.status(400).json({ message: "Name and password are required" });
     }
@@ -59,12 +54,12 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: "Password must be at least 6 characters long" });
     }
 
-    // Email validation
+    // Email validation if email is provided
     if (email && !validator.isEmail(email)) {
       return res.status(400).json({ message: "Invalid email format" });
     }
 
-    // Phone normalization + validation
+    // Normalize and validate phone number if phone is provided
     let normalizedPhone = null;
     if (phone) {
       normalizedPhone = normalizePhone(phone);
@@ -73,7 +68,7 @@ export const register = async (req, res, next) => {
       }
     }
 
-    // Check if email exists
+    // Check if email exists if email is provided
     if (email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });
       if (emailExists) {
@@ -92,10 +87,10 @@ export const register = async (req, res, next) => {
     // Hash password before saving
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Construct the new user data based on provided fields
+    // Create the new user object
     const newUserData = { name, password: hashedPassword };
-    if (email) newUserData.email = email.toLowerCase();  // Normalize email
-    if (phone) newUserData.phone = normalizedPhone;  // Use normalized phone
+    if (email) newUserData.email = email.toLowerCase();  // Normalize email if provided
+    if (normalizedPhone) newUserData.phone = normalizedPhone;  // Use normalized phone number
 
     // Create new user
     const user = await User.create(newUserData);
@@ -107,13 +102,13 @@ export const register = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    // Handle Mongo duplicate key error (E11000) specifically to return a clear message
+
+    // Handle Mongo duplicate key error (E11000) for email/phone
     if (error && (error.code === 11000 || (error.message && error.message.includes('E11000')))) {
-      // Prefer structured keyValue when available
       let field = null;
       try {
         if (error.keyValue) {
-          field = Object.keys(error.keyValue)[0];
+          field = Object.keys(error.keyValue)[0];  // Get the field causing the duplicate
         } else {
           const m = error.message.match(/index: (\w+)_1/);
           if (m && m[1]) field = m[1];
@@ -131,8 +126,6 @@ export const register = async (req, res, next) => {
 };
 
 
-
-
 export const login = async (req, res, next) => {
   try {
     const { identifier, email, phone, password } = req.body;
@@ -143,31 +136,30 @@ export const login = async (req, res, next) => {
 
     let query = {};
 
-    // Prefer identifier if provided
+    // Prefer identifier if provided (email or phone)
     if (identifier) {
       if (validator.isEmail(identifier)) {
         query.email = identifier.toLowerCase();
       } else {
-        // Try to normalize phone first
-        const np = normalizePhone(identifier);
-        if (np) query.phone = np;
-        else if (validator.isMobilePhone(identifier)) query.phone = identifier.trim();
-        else return res.status(400).json({ message: "Invalid email or phone" });
+        const normalizedPhone = normalizePhone(identifier);
+        if (normalizedPhone) {
+          query.phone = normalizedPhone;
+        } else if (validator.isMobilePhone(identifier)) {
+          query.phone = identifier.trim();
+        } else {
+          return res.status(400).json({ message: "Invalid email or phone" });
+        }
       }
-    } 
-    // Fallbacks
-    else if (email) {
+    } else if (email) {
       if (!validator.isEmail(email)) {
         return res.status(400).json({ message: "Invalid email format" });
       }
       query.email = email.toLowerCase();
-    } 
-    else if (phone) {
-      const np = normalizePhone(phone);
-      if (!np) return res.status(400).json({ message: "Invalid phone format" });
-      query.phone = np;
-    } 
-    else {
+    } else if (phone) {
+      const normalizedPhone = normalizePhone(phone);
+      if (!normalizedPhone) return res.status(400).json({ message: "Invalid phone format" });
+      query.phone = normalizedPhone;
+    } else {
       return res.status(400).json({ message: "Email or phone is required" });
     }
 
@@ -195,10 +187,8 @@ export const login = async (req, res, next) => {
   }
 };
 
-
 export const getMe = async (req, res) => {
   try {
-    // protect middleware should attach the user document to req.user
     if (!req.user) return res.status(401).json({ message: 'Not authorized' });
     res.json(req.user);
   } catch (error) {
@@ -218,14 +208,14 @@ export const checkIdentifier = async (req, res) => {
       return res.json({ exists: !!found, field: 'email' });
     }
 
-    // Try normalization-first for phone identifiers
+    // Normalize the phone number first for checking
     const normalized = normalizePhone(identifier);
     if (normalized) {
       const found = await User.findOne({ phone: normalized });
       return res.json({ exists: !!found, field: 'phone' });
     }
 
-    // Fallback: if validator considers it a mobile phone, try raw trimmed search
+    // Fallback: if the validator considers it a mobile phone, try raw trimmed search
     if (validator.isMobilePhone(identifier)) {
       const found = await User.findOne({ phone: identifier.trim() });
       return res.json({ exists: !!found, field: 'phone' });
