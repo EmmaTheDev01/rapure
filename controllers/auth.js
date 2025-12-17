@@ -31,16 +31,16 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid phone number format" });
     }
 
-    // Check uniqueness for email or phone if provided
+    // Check if email or phone already exists, but only if provided
     if (email) {
-      const emailExists = await User.findOne({ email });
+      const emailExists = await User.findOne({ email: email.toLowerCase() });  // Normalize email to lowercase
       if (emailExists) {
         return res.status(400).json({ message: "Email already exists" });
       }
     }
 
     if (phone) {
-      const phoneExists = await User.findOne({ phone });
+      const phoneExists = await User.findOne({ phone: phone.trim() });  // Normalize phone (e.g., trim spaces)
       if (phoneExists) {
         return res.status(400).json({ message: "Phone number already exists" });
       }
@@ -51,8 +51,8 @@ export const register = async (req, res, next) => {
 
     // Construct the new user data based on provided fields
     const newUserData = { name, password: hashedPassword };
-    if (email) newUserData.email = email;
-    if (phone) newUserData.phone = phone;
+    if (email) newUserData.email = email.toLowerCase();  // Normalize email
+    if (phone) newUserData.phone = phone.trim();  // Normalize phone
 
     // Create new user
     const user = await User.create(newUserData);
@@ -63,10 +63,10 @@ export const register = async (req, res, next) => {
       user,
     });
   } catch (error) {
-    // Forward to global error handler to ensure consistent responses and CORS headers
     return next(error);
   }
 };
+
 
 
 export const login = async (req, res, next) => {
