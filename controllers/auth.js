@@ -87,9 +87,9 @@ export const register = async (req, res, next) => {
     // Hash password before saving
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create the new user object
+    // Create the new user object, conditionally setting email if provided
     const newUserData = { name, password: hashedPassword };
-    if (email) newUserData.email = email.toLowerCase();  // Normalize email if provided
+    if (email) newUserData.email = email.toLowerCase();  // Only set email if provided
     if (normalizedPhone) newUserData.phone = normalizedPhone;  // Use normalized phone number
 
     // Create new user
