@@ -107,6 +107,25 @@ export const register = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
+    // Handle Mongo duplicate key error (E11000) specifically to return a clear message
+    if (error && (error.code === 11000 || (error.message && error.message.includes('E11000')))) {
+      // Prefer structured keyValue when available
+      let field = null;
+      try {
+        if (error.keyValue) {
+          field = Object.keys(error.keyValue)[0];
+        } else {
+          const m = error.message.match(/index: (\w+)_1/);
+          if (m && m[1]) field = m[1];
+        }
+      } catch (e) {
+        /* ignore */
+      }
+
+      const friendly = field ? `${field} already exists` : 'Duplicate value';
+      return res.status(409).json({ message: friendly });
+    }
+
     return next(error);
   }
 };
