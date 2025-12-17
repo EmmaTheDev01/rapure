@@ -69,7 +69,7 @@ export const register = async (req, res, next) => {
     }
 
     // Only check for email conflict if email is provided (not if phone is used)
-    if (email) {
+    if (!phone && email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });
       if (emailExists) {
         return res.status(409).json({ message: "Email already exists" });
