@@ -33,59 +33,30 @@ const normalizePhone = (raw) => {
 
 export const register = async (req, res, next) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, phone, password } = req.body;
 
-    // Basic validation: require name and password, and at least one identifier (email or phone)
-    if (!name || !password) {
-      return res.status(400).json({ message: "Name and password are required" });
+    // Basic validation: require name, password, and phone
+    if (!name || !password || !phone) {
+      return res.status(400).json({ message: "Name, phone, and password are required" });
     }
 
-    if (!email && !phone) {
-      return res.status(400).json({ message: "Provide email or phone to register" });
+    // Normalize and validate phone number
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ message: "Invalid phone number format" });
     }
 
-    // If both email and phone are provided, reject the request
-    if (email && phone) {
-      return res.status(400).json({ message: "Please provide either email or phone, not both" });
-    }
-
-    // Email validation if email is provided
-    if (email && !validator.isEmail(email)) {
-      return res.status(400).json({ message: "Invalid email format" });
-    }
-
-    // Normalize and validate phone number if phone is provided
-    let normalizedPhone = null;
-    if (phone) {
-      normalizedPhone = normalizePhone(phone);
-      if (!normalizedPhone) {
-        return res.status(400).json({ message: "Invalid phone number format" });
-      }
-    }
-
-    // Only check for email conflict if email is provided (not if phone is used)
-    if (email) {
-      const emailExists = await User.findOne({ email: email.toLowerCase() });
-      if (emailExists) {
-        return res.status(409).json({ message: "Email already exists" });
-      }
-    }
-
-    // Only check for phone conflict if phone is provided (not if email is used)
-    if (normalizedPhone) {
-      const phoneExists = await User.findOne({ phone: normalizedPhone });
-      if (phoneExists) {
-        return res.status(409).json({ message: "Phone number already exists" });
-      }
+    // Check if the phone number already exists
+    const phoneExists = await User.findOne({ phone: normalizedPhone });
+    if (phoneExists) {
+      return res.status(409).json({ message: "Phone number already exists" });
     }
 
     // Hash password before saving
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create the new user object, conditionally setting email and/or phone
-    const newUserData = { name, password: hashedPassword };
-    if (email) newUserData.email = email.toLowerCase();  // Only set email if provided
-    if (normalizedPhone) newUserData.phone = normalizedPhone;  // Use normalized phone number
+    // Create the new user object
+    const newUserData = { name, phone: normalizedPhone, password: hashedPassword };
 
     // Create new user
     const user = await User.create(newUserData);
@@ -98,10 +69,9 @@ export const register = async (req, res, next) => {
   } catch (error) {
     console.error('Registration error:', error);
 
-    // Handle Mongo duplicate key error (E11000) for email/phone
+    // Handle Mongo duplicate key error (E11000) for phone
     if (error && (error.code === 11000 || (error.message && error.message.includes('E11000')))) {
-      const field = error.keyValue ? Object.keys(error.keyValue)[0] : null;
-      const friendlyMessage = field ? `${field} already exists` : 'Duplicate value';
+      const friendlyMessage = "Phone number already exists";
       return res.status(409).json({ message: friendlyMessage });
     }
 
@@ -114,42 +84,20 @@ export const register = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
-    const { identifier, email, phone, password } = req.body;
+    const { phone, password } = req.body;
 
-    if (!password) {
-      return res.status(400).json({ message: "Password is required" });
+    if (!phone || !password) {
+      return res.status(400).json({ message: "Phone and password are required" });
     }
 
-    let query = {};
-
-    // Prefer identifier if provided (email or phone)
-    if (identifier) {
-      if (validator.isEmail(identifier)) {
-        query.email = identifier.toLowerCase();
-      } else {
-        const normalizedPhone = normalizePhone(identifier);
-        if (normalizedPhone) {
-          query.phone = normalizedPhone;
-        } else if (validator.isMobilePhone(identifier)) {
-          query.phone = identifier.trim();
-        } else {
-          return res.status(400).json({ message: "Invalid email or phone" });
-        }
-      }
-    } else if (email) {
-      if (!validator.isEmail(email)) {
-        return res.status(400).json({ message: "Invalid email format" });
-      }
-      query.email = email.toLowerCase();
-    } else if (phone) {
-      const normalizedPhone = normalizePhone(phone);
-      if (!normalizedPhone) return res.status(400).json({ message: "Invalid phone format" });
-      query.phone = normalizedPhone;
-    } else {
-      return res.status(400).json({ message: "Email or phone is required" });
+    // Normalize and validate phone number
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ message: "Invalid phone number format" });
     }
 
-    const user = await User.findOne(query).select("+password");
+    // Find the user by phone number
+    const user = await User.findOne({ phone: normalizedPhone }).select("+password");
 
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials" });
@@ -173,6 +121,7 @@ export const login = async (req, res, next) => {
   }
 };
 
+
 export const getMe = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ message: 'Not authorized' });
@@ -187,29 +136,20 @@ export const getMe = async (req, res) => {
 export const checkIdentifier = async (req, res) => {
   try {
     const { identifier } = req.query;
-    if (!identifier) return res.status(400).json({ message: 'Identifier query required' });
+    if (!identifier) return res.status(400).json({ message: 'Phone number is required' });
 
-    if (validator.isEmail(identifier)) {
-      const found = await User.findOne({ email: identifier.toLowerCase() });
-      return res.json({ exists: !!found, field: 'email' });
-    }
-
-    // Normalize the phone number first for checking
+    // Normalize and validate phone number
     const normalized = normalizePhone(identifier);
-    if (normalized) {
-      const found = await User.findOne({ phone: normalized });
-      return res.json({ exists: !!found, field: 'phone' });
+    if (!normalized) {
+      return res.status(400).json({ message: 'Invalid phone number format' });
     }
 
-    // Fallback: if the validator considers it a mobile phone, try raw trimmed search
-    if (validator.isMobilePhone(identifier)) {
-      const found = await User.findOne({ phone: identifier.trim() });
-      return res.json({ exists: !!found, field: 'phone' });
-    }
-
-    return res.status(400).json({ message: 'Invalid identifier' });
+    // Check if the phone number already exists
+    const found = await User.findOne({ phone: normalized });
+    return res.json({ exists: !!found, field: 'phone' });
   } catch (error) {
     console.error('checkIdentifier error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
+
