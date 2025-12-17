@@ -35,6 +35,7 @@ export const register = async (req, res, next) => {
   try {
     const { name, email, phone, password } = req.body;
 
+    // Basic validation: require name and password, and at least one identifier (email or phone)
     if (!name || !password) {
       return res.status(400).json({ message: "Name and password are required" });
     }
@@ -43,12 +44,22 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: "Provide email or phone to register" });
     }
 
-    // Ensure that both email and phone are not provided at the same time
+    // If both email and phone are provided, reject the request
     if (email && phone) {
       return res.status(400).json({ message: "Please provide either email or phone, not both" });
     }
 
-    // Normalize phone number if provided
+    // Password strength validation
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long" });
+    }
+
+    // Email validation if email is provided
+    if (email && !validator.isEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    // Normalize and validate phone number if phone is provided
     let normalizedPhone = null;
     if (phone) {
       normalizedPhone = normalizePhone(phone);
@@ -57,7 +68,9 @@ export const register = async (req, res, next) => {
       }
     }
 
-    // Check for email existence if email is provided
+    // **Separate Conflict Checking for Email and Phone**
+
+    // Only check for email conflict if email is provided (not if phone is used)
     if (email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });
       if (emailExists) {
@@ -65,7 +78,7 @@ export const register = async (req, res, next) => {
       }
     }
 
-    // Check for phone existence if phone is provided
+    // Only check for phone conflict if phone is provided (not if email is used)
     if (normalizedPhone) {
       const phoneExists = await User.findOne({ phone: normalizedPhone });
       if (phoneExists) {
@@ -73,21 +86,43 @@ export const register = async (req, res, next) => {
       }
     }
 
-    // Proceed with creating the user if no conflicts
+    // Hash password before saving
     const hashedPassword = await bcrypt.hash(password, 12);
 
+    // Create the new user object, conditionally setting email and/or phone
     const newUserData = { name, password: hashedPassword };
-    if (email) newUserData.email = email.toLowerCase(); // Only set email if provided
-    if (normalizedPhone) newUserData.phone = normalizedPhone; // Use normalized phone number
+    if (email) newUserData.email = email.toLowerCase();  // Only set email if provided
+    if (normalizedPhone) newUserData.phone = normalizedPhone;  // Use normalized phone number
 
+    // Create new user
     const user = await User.create(newUserData);
 
+    // Return response with a token and user info
     return res.status(201).json({
       token: generateToken(user._id),
       user,
     });
   } catch (error) {
     console.error('Registration error:', error);
+
+    // Handle Mongo duplicate key error (E11000) for email/phone
+    if (error && (error.code === 11000 || (error.message && error.message.includes('E11000')))) {
+      let field = null;
+      try {
+        if (error.keyValue) {
+          field = Object.keys(error.keyValue)[0];  // Get the field causing the duplicate
+        } else {
+          const m = error.message.match(/index: (\w+)_1/);
+          if (m && m[1]) field = m[1];
+        }
+      } catch (e) {
+        /* ignore */
+      }
+
+      const friendly = field ? `${field} already exists` : 'Duplicate value';
+      return res.status(409).json({ message: friendly });
+    }
+
     return next(error);
   }
 };
