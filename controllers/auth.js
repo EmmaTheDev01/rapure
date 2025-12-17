@@ -16,6 +16,11 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: "Provide email or phone to register" });
     }
 
+    // If both email and phone are provided, reject the request
+    if (email && phone) {
+      return res.status(400).json({ message: "Please provide either email or phone, not both" });
+    }
+
     // Password strength validation
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must be at least 6 characters long" });
@@ -33,17 +38,17 @@ export const register = async (req, res, next) => {
 
     // Check if email exists
     if (email) {
-      const emailExists = await User.findOne({ email: email.toLowerCase() });  // Normalize email to lowercase
+      const emailExists = await User.findOne({ email: email.toLowerCase() });
       if (emailExists) {
-        return res.status(409).json({ message: "Email already exists" });  // 409 Conflict for duplicate email
+        return res.status(409).json({ message: "Email already exists" });
       }
     }
 
     // Check if phone exists
     if (phone) {
-      const phoneExists = await User.findOne({ phone: phone.trim() });  // Normalize phone (e.g., trim spaces)
+      const phoneExists = await User.findOne({ phone: phone.trim() });
       if (phoneExists) {
-        return res.status(409).json({ message: "Phone number already exists" });  // 409 Conflict for duplicate phone
+        return res.status(409).json({ message: "Phone number already exists" });
       }
     }
 
@@ -64,6 +69,7 @@ export const register = async (req, res, next) => {
       user,
     });
   } catch (error) {
+    console.error('Registration error:', error);
     return next(error);
   }
 };
