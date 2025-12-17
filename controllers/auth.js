@@ -149,3 +149,26 @@ export const getMe = async (req, res) => {
     res.status(500).json({ message: 'Failed to get user' });
   }
 };
+
+// Check if an identifier (email or phone) already exists
+export const checkIdentifier = async (req, res) => {
+  try {
+    const { identifier } = req.query;
+    if (!identifier) return res.status(400).json({ message: 'Identifier query required' });
+
+    if (validator.isEmail(identifier)) {
+      const found = await User.findOne({ email: identifier.toLowerCase() });
+      return res.json({ exists: !!found, field: 'email' });
+    }
+
+    if (validator.isMobilePhone(identifier)) {
+      const found = await User.findOne({ phone: identifier.trim() });
+      return res.json({ exists: !!found, field: 'phone' });
+    }
+
+    return res.status(400).json({ message: 'Invalid identifier' });
+  } catch (error) {
+    console.error('checkIdentifier error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
