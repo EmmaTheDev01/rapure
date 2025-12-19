@@ -18,12 +18,15 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: "Email or Phone is required" });
     }
 
+    // Prepare normalized values once
+    const normalizedEmail = email ? email.toLowerCase() : undefined;
+    const normalizedPhone = phone ? normalizePhone(phone) : undefined;
+
+    // Build query based on which one was provided
     let query = {};
-    if (email) {
-      query.email = email.toLowerCase();
-    } else {
-      query.phone = normalizePhone(phone);
-    }
+    if (normalizedEmail) query.email = normalizedEmail;
+    else if (normalizedPhone) query.phone = normalizedPhone;
+    else return res.status(400).json({ message: "Invalid email or phone format" });
 
     const exists = await User.findOne(query);
     if (exists) {
@@ -34,15 +37,19 @@ export const register = async (req, res) => {
     const salt = await bcrypt.genSalt(12);
     const hashed = await bcrypt.hash(password, salt);
 
+    // Create user with the ALREADY normalized values
     const user = await User.create({
       name,
-      email: email ? email.toLowerCase() : undefined,
-      phone: phone ? normalizePhone(phone) : undefined,
+      email: normalizedEmail,
+      phone: normalizedPhone,
       password: hashed,
     });
 
+    // Verify generateToken exists and works
+    const token = generateToken(user._id);
+
     res.status(201).json({
-      token: generateToken(user._id),
+      token,
       user: {
         _id: user._id,
         name: user.name,
@@ -52,11 +59,14 @@ export const register = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Registration Error:", error);
-    res.status(500).json({ message: "Server error during registration" });
+    // This will now show up in your Render Logs with more detail
+    console.error("FULL Registration Error Detail:", error);
+    res.status(500).json({ 
+      message: "Server error during registration",
+      error: error.message // Temporarily send this to see the error in the frontend console
+    });
   }
 };
-
 export const login = async (req, res) => {
   try {
     const { identifier, email, phone, password } = req.body;
