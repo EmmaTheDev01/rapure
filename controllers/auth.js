@@ -4,10 +4,31 @@ import { generateToken } from "../utils/jwt.js";
 
 const normalizePhone = (raw) => {
   if (!raw || typeof raw !== 'string') return null;
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 10 && digits.startsWith('0')) return '250' + digits.slice(1);
-  if (digits.length === 9 && digits.startsWith('7')) return '250' + digits;
-  return digits;
+
+  // 1. Remove all non-digits (handles "+", spaces, dashes)
+  let digits = raw.replace(/\D/g, '');
+
+  // 2. Local Format: "078..." (10 digits) -> "25078..."
+  if (digits.length === 10 && digits.startsWith('0')) {
+    return '250' + digits.slice(1);
+  }
+
+  // 3. Short Format: "78..." (9 digits) -> "25078..."
+  if (digits.length === 9 && digits.startsWith('7')) {
+    return '250' + digits;
+  }
+
+  // 4. International Format: "25078..." (12 digits) -> Keep as is
+  if (digits.length === 12 && digits.startsWith('250')) {
+    return digits;
+  }
+
+  // 5. Fallback for international or long inputs
+  if (digits.length >= 10 && digits.length <= 15) {
+    return digits;
+  }
+
+  return null;
 };
 
 export const register = async (req, res) => {
