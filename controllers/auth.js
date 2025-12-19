@@ -2,7 +2,6 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
 
-// Helper to normalize phone numbers (Matches your frontend logic)
 const normalizePhone = (raw) => {
   if (!raw || typeof raw !== 'string') return null;
   const digits = raw.replace(/\D/g, '');
@@ -15,42 +14,45 @@ export const register = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // 1. Normalize identifier
-    const normalizedPhone = normalizePhone(phone);
+    if (!email && !phone) {
+      return res.status(400).json({ message: "Email or Phone is required" });
+    }
 
-    // 2. Check Uniqueness (Using 409 Conflict as your frontend expects)
+    let query = {};
     if (email) {
-      const exists = await User.findOne({ email });
-      if (exists) return res.status(409).json({ message: "Email already exists" });
-    }
-    
-    if (normalizedPhone) {
-      const existsPhone = await User.findOne({ phone: normalizedPhone });
-      if (existsPhone) return res.status(409).json({ message: "Phone number already registered" });
+      query.email = email.toLowerCase();
+    } else {
+      query.phone = normalizePhone(phone);
     }
 
-    // 3. Hash and Create
+    const exists = await User.findOne(query);
+    if (exists) {
+      const type = email ? "Email" : "Phone number";
+      return res.status(409).json({ message: `${type} already exists` });
+    }
+
     const salt = await bcrypt.genSalt(12);
     const hashed = await bcrypt.hash(password, salt);
-    
-    const user = await User.create({ 
-      name, 
-      email, 
-      phone: normalizedPhone, 
-      password: hashed 
+
+    const user = await User.create({
+      name,
+      email: email ? email.toLowerCase() : undefined,
+      phone: phone ? normalizePhone(phone) : undefined,
+      password: hashed,
     });
 
-    // 4. Response (frontend expects token and user)
     res.status(201).json({
       token: generateToken(user._id),
       user: {
         _id: user._id,
         name: user.name,
+        email: user.email,
         phone: user.phone,
-        profileComplete: user.profileComplete || false
+        profileComplete: user.profileComplete || false,
       },
     });
   } catch (error) {
+    console.error("Registration Error:", error);
     res.status(500).json({ message: "Server error during registration" });
   }
 };
@@ -66,14 +68,16 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: 'Email or phone is required' });
     }
 
-    // logic to determine if identifier is email or phone
-    if (loginId.includes('@')) {
+    // FIX: Check if loginId is email or phone. 
+    // If phone, we must normalize it to find the record in DB.
+    if (typeof loginId === 'string' && loginId.includes('@')) {
       query.email = loginId.toLowerCase();
     } else {
-      query.phone = normalizePhone(loginId);
+      const normalized = normalizePhone(loginId);
+      if (!normalized) return res.status(400).json({ message: "Invalid phone format" });
+      query.phone = normalized;
     }
 
-    // Find user and explicitly include password
     const user = await User.findOne(query).select('+password');
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -89,17 +93,39 @@ export const login = async (req, res) => {
       user: {
         _id: user._id,
         name: user.name,
+        email: user.email,
         phone: user.phone,
         profileComplete: user.profileComplete || false
       },
     });
   } catch (error) {
+    console.error("Login Error:", error);
     res.status(500).json({ message: "Server error during login" });
   }
 };
 
+export const checkIdentifier = async (req, res) => {
+  try {
+    const { identifier } = req.query;
+    if (!identifier) return res.status(400).json({ message: "No identifier provided" });
+
+    const normalized = identifier.includes('@') ? identifier.toLowerCase() : normalizePhone(identifier);
+    
+    // Using $or ensures if they check an email it looks in email field, 
+    // and if they check a phone it looks in phone field.
+    const exists = await User.findOne({
+      $or: [{ email: normalized }, { phone: normalized }]
+    });
+
+    res.json({ exists: !!exists });
+  } catch (error) {
+    res.status(500).json({ message: "Check failed" });
+  }
+};
+
 export const getMe = async (req, res) => {
-  // Assumes your 'protect' middleware finds the user and attaches it to req.user
+  // If your middleware attaches the user, just return it.
+  // Note: Ensure your 'protect' middleware doesn't include the password!
   if (!req.user) {
     return res.status(401).json({ message: 'Not authorized' });
   }
