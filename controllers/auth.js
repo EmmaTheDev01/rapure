@@ -2,60 +2,106 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
 
+// Helper to normalize phone numbers (Matches your frontend logic)
+const normalizePhone = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10 && digits.startsWith('0')) return '250' + digits.slice(1);
+  if (digits.length === 9 && digits.startsWith('7')) return '250' + digits;
+  return digits;
+};
+
 export const register = async (req, res) => {
-  const { name, email, phone, password } = req.body;
+  try {
+    const { name, email, phone, password } = req.body;
 
-  // Check uniqueness for email or phone if provided
-  if (email) {
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: "Email already exists" });
+    // 1. Normalize identifier
+    const normalizedPhone = normalizePhone(phone);
+
+    // 2. Check Uniqueness (Using 409 Conflict as your frontend expects)
+    if (email) {
+      const exists = await User.findOne({ email });
+      if (exists) return res.status(409).json({ message: "Email already exists" });
+    }
+    
+    if (normalizedPhone) {
+      const existsPhone = await User.findOne({ phone: normalizedPhone });
+      if (existsPhone) return res.status(409).json({ message: "Phone number already registered" });
+    }
+
+    // 3. Hash and Create
+    const salt = await bcrypt.genSalt(12);
+    const hashed = await bcrypt.hash(password, salt);
+    
+    const user = await User.create({ 
+      name, 
+      email, 
+      phone: normalizedPhone, 
+      password: hashed 
+    });
+
+    // 4. Response (frontend expects token and user)
+    res.status(201).json({
+      token: generateToken(user._id),
+      user: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone,
+        profileComplete: user.profileComplete || false
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error during registration" });
   }
-  if (phone) {
-    const existsPhone = await User.findOne({ phone });
-    if (existsPhone) return res.status(400).json({ message: "Phone already exists" });
-  }
-
-  const hashed = await bcrypt.hash(password, 12);
-  const user = await User.create({ name, email, phone, password: hashed });
-
-  res.json({
-    token: generateToken(user._id),
-    user,
-  });
 };
 
 export const login = async (req, res) => {
-  // Accept either `identifier` (email or phone) or `email`/`phone` explicitly
-  const { identifier, email, phone, password } = req.body;
+  try {
+    const { identifier, email, phone, password } = req.body;
 
-  let query = {};
-  if (identifier) {
-    if (identifier.includes('@')) query.email = identifier;
-    else query.phone = identifier;
-  } else if (email) query.email = email;
-  else if (phone) query.phone = phone;
+    let query = {};
+    const loginId = identifier || email || phone;
 
-  if (!Object.keys(query).length) return res.status(400).json({ message: 'Missing login identifier' });
+    if (!loginId) {
+      return res.status(400).json({ message: 'Email or phone is required' });
+    }
 
-  const user = await User.findOne(query).select('+password');
-  if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    // logic to determine if identifier is email or phone
+    if (loginId.includes('@')) {
+      query.email = loginId.toLowerCase();
+    } else {
+      query.phone = normalizePhone(loginId);
+    }
 
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+    // Find user and explicitly include password
+    const user = await User.findOne(query).select('+password');
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
-  res.json({
-    token: generateToken(user._id),
-    user,
-  });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    res.json({
+      token: generateToken(user._id),
+      user: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone,
+        profileComplete: user.profileComplete || false
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error during login" });
+  }
 };
 
 export const getMe = async (req, res) => {
-  try {
-    // protect middleware should attach the user document to req.user
-    if (!req.user) return res.status(401).json({ message: 'Not authorized' });
-    res.json(req.user);
-  } catch (error) {
-    console.error('getMe error:', error);
-    res.status(500).json({ message: 'Failed to get user' });
+  // Assumes your 'protect' middleware finds the user and attaches it to req.user
+  if (!req.user) {
+    return res.status(401).json({ message: 'Not authorized' });
   }
+  res.json(req.user);
 };
