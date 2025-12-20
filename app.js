@@ -16,9 +16,9 @@ const allowedOrigins = [
 	process.env.CLIENT_URL || "http://localhost:8080",
 	process.env.PROD_CLIENT_URL || "https://rapureapp.onrender.com",
 	// added production client origin
-	"https://farmersforum.nrtlify.app",
+	"https://ra-pure.rccdnetwork.org",
 	// Netlify production origin (added to fix reported CORS preflight failure)
-	"https://farmersforum.netlify.app",
+	"https://ra-pure.rccdnetwork.org",
 ];
 app.use(
 	cors({
